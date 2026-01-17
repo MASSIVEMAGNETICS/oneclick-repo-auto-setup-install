@@ -33,6 +33,18 @@
       "files": ["requirements.txt", "setup.py", "pyproject.toml"],
       "install_command": "pip install -r requirements.txt"
     },
+    "pipenv": {
+      "enabled": true,
+      "command": "pipenv",
+      "files": ["Pipfile"],
+      "install_command": "pipenv install"
+    },
+    "poetry": {
+      "enabled": true,
+      "command": "poetry",
+      "files": ["pyproject.toml"],
+      "install_command": "poetry install"
+    },
     "nodejs": {
       "enabled": true,
       "command": "npm",
@@ -50,6 +62,24 @@
       "command": "go",
       "files": ["go.mod"],
       "install_command": "go mod download"
+    },
+    "cargo": {
+      "enabled": true,
+      "command": "cargo",
+      "files": ["Cargo.toml"],
+      "install_command": "cargo fetch"
+    },
+    "maven": {
+      "enabled": true,
+      "command": "mvn",
+      "files": ["pom.xml"],
+      "install_command": "mvn -q -DskipTests dependency:resolve"
+    },
+    "gradle": {
+      "enabled": true,
+      "command": "gradle",
+      "files": ["build.gradle", "build.gradle.kts"],
+      "install_command": "gradle dependencies"
     }
   },
   

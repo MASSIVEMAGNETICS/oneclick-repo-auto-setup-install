@@ -131,7 +131,11 @@ python3 -v setup_wizard.py
 | Local Folder | ✅ | Instant copy |
 | ZIP File | ✅ | Handles nested archives |
 | Git URL | ✅ | Requires Git installed |
-| Auto Dependencies | ✅ | Python, Node, Ruby, Go |
+| Auto Dependencies | ✅ | Python, Node, Ruby, Go, Rust, Maven/Gradle |
+| Python Virtualenv | ✅ | Optional .venv creation |
+| Git Auth Options | ✅ | SSH key, OAuth token, credential helper |
+| Docker Support | ✅ | Optional build/run |
+| CI Template | ✅ | Optional workflow generation |
 | Progress Tracking | ✅ | Real-time updates |
 | Error Recovery | ✅ | Graceful failure handling |
 | Logging | ✅ | Detailed operation logs |

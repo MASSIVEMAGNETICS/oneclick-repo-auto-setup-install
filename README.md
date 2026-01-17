@@ -19,9 +19,14 @@ A production-ready, user-friendly GUI application for setting up repositories fr
 
 - **🚀 Smart Setup**
   - Automatic dependency detection
-  - Support for Python (pip), Node.js (npm), Ruby (bundle), and Go
+  - Support for Python (pip, pipenv, Poetry), Node.js (npm), Ruby (bundle), Go, Rust (Cargo), and Java (Maven/Gradle)
   - Intelligent file extraction
   - Duplicate name handling
+  - Optional Python virtualenv creation
+  - Monorepo project discovery
+  - Optional Docker build/run
+  - Post-setup scripts and recipes
+  - Optional CI workflow template generation
 
 - **💎 Polished UI**
   - Modern, intuitive interface
@@ -100,7 +105,9 @@ Or on Linux/macOS with executable permissions:
 
 3. **Configure Options**
    - Enable/disable automatic dependency installation
-   - (Automatically detects requirements.txt, package.json, Gemfile, go.mod)
+   - Optional Python virtualenv creation and Docker build/run
+   - Optional post-setup scripts/recipes and CI template generation
+   - (Automatically detects requirements.txt, package.json, Gemfile, go.mod, etc.)
 
 4. **Start Setup**
    - Click "Start Setup" to begin
@@ -126,6 +133,7 @@ Or on Linux/macOS with executable permissions:
 2. Enter URL (e.g., `https://github.com/user/repo.git`)
 3. Choose target directory
 4. Click "Start Setup"
+5. (Optional) Provide SSH key, OAuth token, or credential helper for private repos
 
 ## 🔒 Error Handling & Safety
 
@@ -157,10 +165,15 @@ The wizard automatically detects and installs dependencies for:
 
 | Language/Framework | File Detected | Command Run |
 |-------------------|---------------|-------------|
-| Python | requirements.txt | `pip install -r requirements.txt` |
+| Python (pip) | requirements.txt | `pip install -r requirements.txt` |
+| Python (pipenv) | Pipfile | `pipenv install` |
+| Python (Poetry) | pyproject.toml | `poetry install` |
 | Node.js | package.json | `npm install` |
 | Ruby | Gemfile | `bundle install` |
 | Go | go.mod | `go mod download` |
+| Rust | Cargo.toml | `cargo fetch` |
+| Maven | pom.xml | `mvn -q -DskipTests dependency:resolve` |
+| Gradle | build.gradle / build.gradle.kts | `gradle dependencies` |
 
 **Note**: Respective package managers (pip, npm, bundle, go) must be installed on your system.
 
@@ -227,8 +240,6 @@ This project is open source and available under the MIT License.
 ## 🔮 Future Enhancements
 
 Potential future features:
-- Support for more package managers (Maven, Gradle, Cargo, etc.)
-- Custom post-setup scripts
 - Repository templates
 - Batch processing
 - Configuration profiles
