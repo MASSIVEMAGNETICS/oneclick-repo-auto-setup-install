@@ -16,7 +16,6 @@ import threading
 import logging
 from pathlib import Path
 from urllib.parse import urlparse
-import json
 from datetime import datetime
 
 
@@ -326,7 +325,8 @@ class SetupWizard:
             if self.auto_install.get():
                 self.install_dependencies(repo_path)
                 
-            self.log_message("Setup completed successfully!", "SUCCESS")
+            success_message = "Setup completed successfully!"
+            self.log_message(success_message, "SUCCESS")
             self.root.after(0, lambda: messagebox.showinfo(
                 "Success",
                 f"Repository setup completed!\n\nLocation: {repo_path}"
