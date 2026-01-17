@@ -17,8 +17,9 @@ import logging
 import json
 import shlex
 import re
+import urllib.parse
 from pathlib import Path
-from urllib.parse import urlparse, quote
+from urllib.parse import urlparse, urlunparse
 from datetime import datetime
 
 
@@ -526,8 +527,10 @@ class SetupWizard:
             
         clone_url = url
         if oauth_token:
-            if url.startswith(("http://", "https://")):
+            if url.startswith("https://"):
                 clone_url = self.inject_oauth_token(url, oauth_token)
+            elif url.startswith("http://"):
+                self.log_message("OAuth token ignored for HTTP URLs. Use HTTPS instead.", "WARNING")
             else:
                 self.log_message("OAuth token provided for non-HTTP URL; ignoring token", "WARNING")
         
@@ -553,7 +556,7 @@ class SetupWizard:
             raise RuntimeError("Git clone timed out (5 minutes)")
         except subprocess.CalledProcessError as e:
             error_output = self.sanitize_text(e.stderr or "")
-            raise RuntimeError(f"Git clone failed: {error_output or 'Unknown error'}")
+            raise RuntimeError(f"Git clone failed: {error_output or 'Git clone failed without error output'}")
             
         return dest_path
         
@@ -761,8 +764,9 @@ class SetupWizard:
     def is_poetry_project(self, pyproject_path):
         """Determine if pyproject.toml belongs to Poetry."""
         try:
-            content = Path(pyproject_path).read_text(encoding="utf-8", errors="ignore")
-        except OSError:
+            content = Path(pyproject_path).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as e:
+            self.log_message(f"Unable to read {pyproject_path}: {e}", "WARNING")
             return False
         return "[tool.poetry]" in content
         
@@ -777,7 +781,10 @@ class SetupWizard:
         try:
             venv_path = self.ensure_venv(project_path)
         except Exception as e:
-            self.log_message(f"Failed to create virtual environment: {e}", "WARNING")
+            self.log_message(
+                f"Failed to create virtual environment: {e}. Ensure the Python venv module is installed.",
+                "WARNING"
+            )
             return ["pip"] if self.check_command("pip") else None
         
         pip_path = self.get_venv_pip(venv_path)
@@ -804,10 +811,10 @@ class SetupWizard:
         """Return the Gradle command to run for dependency resolution."""
         gradlew = Path(project_path) / "gradlew"
         if gradlew.exists():
-            return ["./gradlew", "--no-daemon", "dependencies"]
+            return [str(gradlew), "--no-daemon", "dependencies"]
         gradlew_bat = Path(project_path) / "gradlew.bat"
         if gradlew_bat.exists():
-            return ["gradlew.bat", "--no-daemon", "dependencies"]
+            return [str(gradlew_bat), "--no-daemon", "dependencies"]
         if self.check_command("gradle"):
             return ["gradle", "--no-daemon", "dependencies"]
         return None
@@ -936,6 +943,7 @@ jobs:
         
         for context in docker_contexts:
             tag_base = f"{repo_path.name}-{context.name}" if context != repo_path else repo_path.name
+            # Docker tags allow alphanumerics plus ., _, and - characters.
             tag = re.sub(r"[^0-9A-Za-z_.-]", "-", tag_base).lower()
             try:
                 if self.enable_docker_build.get() or self.enable_docker_run.get():
@@ -975,7 +983,7 @@ jobs:
             hostname = parsed.hostname or ""
             if parsed.port:
                 hostname = f"{hostname}:{parsed.port}"
-            sanitized = parsed._replace(netloc=hostname).geturl()
+            sanitized = urlunparse((parsed.scheme, hostname, parsed.path, parsed.params, parsed.query, parsed.fragment))
         return sanitized
         
     def inject_oauth_token(self, url, oauth_token):
@@ -983,9 +991,9 @@ jobs:
         parsed = urlparse(url)
         if parsed.username:
             return url
-        encoded = quote(oauth_token, safe="")
-        netloc = parsed.netloc
-        return parsed._replace(netloc=f"{encoded}@{netloc}").geturl()
+        encoded = urllib.parse.quote(oauth_token, safe="")
+        netloc = f"{encoded}@{parsed.netloc}"
+        return urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment))
         
     def sanitize_text(self, text):
         """Sanitize output for secrets."""

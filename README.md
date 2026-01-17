@@ -25,7 +25,7 @@ A production-ready, user-friendly GUI application for setting up repositories fr
   - Optional Python virtualenv creation
   - Monorepo project discovery
   - Optional Docker build/run
-  - Post-setup scripts and recipes
+  - Post-setup scripts and recipes (trusted repos only)
   - Optional CI workflow template generation
 
 - **💎 Polished UI**
