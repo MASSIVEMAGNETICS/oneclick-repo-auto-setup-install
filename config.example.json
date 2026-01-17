@@ -1,0 +1,76 @@
+{
+  "description": "Example configuration for Setup Wizard (future feature)",
+  "note": "This is a template for future configuration support",
+  
+  "default_settings": {
+    "target_directory": "~/repo_setups",
+    "auto_install_dependencies": true,
+    "create_subdirectories": true,
+    "log_level": "INFO"
+  },
+  
+  "source_types": {
+    "folder": {
+      "enabled": true,
+      "preserve_symlinks": true
+    },
+    "zip": {
+      "enabled": true,
+      "extract_nested": true,
+      "handle_single_root": true
+    },
+    "url": {
+      "enabled": true,
+      "clone_timeout": 300,
+      "shallow_clone": false
+    }
+  },
+  
+  "dependency_managers": {
+    "python": {
+      "enabled": true,
+      "command": "pip",
+      "files": ["requirements.txt", "setup.py", "pyproject.toml"],
+      "install_command": "pip install -r requirements.txt"
+    },
+    "nodejs": {
+      "enabled": true,
+      "command": "npm",
+      "files": ["package.json"],
+      "install_command": "npm install"
+    },
+    "ruby": {
+      "enabled": true,
+      "command": "bundle",
+      "files": ["Gemfile"],
+      "install_command": "bundle install"
+    },
+    "go": {
+      "enabled": true,
+      "command": "go",
+      "files": ["go.mod"],
+      "install_command": "go mod download"
+    }
+  },
+  
+  "ui": {
+    "theme": "clam",
+    "window_size": "800x600",
+    "min_window_size": "700x500",
+    "font_family": "Helvetica",
+    "font_size": 10
+  },
+  
+  "logging": {
+    "directory": "~/.repo_setup_wizard/logs",
+    "max_log_files": 10,
+    "log_format": "%(asctime)s - %(levelname)s - %(message)s"
+  },
+  
+  "advanced": {
+    "parallel_operations": false,
+    "verify_checksums": false,
+    "create_backups": false,
+    "custom_scripts": []
+  }
+}

@@ -1,0 +1,8 @@
+# Universal Repository Setup Wizard Requirements
+# Python 3.7+ compatible
+
+# Note: tkinter is included with Python standard library on most platforms
+# On Linux, you may need to install it separately:
+# Ubuntu/Debian: sudo apt-get install python3-tk
+# Fedora: sudo dnf install python3-tkinter
+# Arch: sudo pacman -S tk
