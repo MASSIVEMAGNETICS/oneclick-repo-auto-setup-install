@@ -36,9 +36,22 @@
 | Package Manager | Detected File | Install Command | Status |
 |----------------|---------------|-----------------|--------|
 | **pip** (Python) | requirements.txt, setup.py, pyproject.toml | `pip install -r requirements.txt` | ✅ Implemented |
+| **pipenv** (Python) | Pipfile | `pipenv install` | ✅ Implemented |
+| **Poetry** (Python) | pyproject.toml | `poetry install` | ✅ Implemented |
 | **npm** (Node.js) | package.json | `npm install` | ✅ Implemented |
 | **bundle** (Ruby) | Gemfile | `bundle install` | ✅ Implemented |
 | **go** (Go) | go.mod | `go mod download` | ✅ Implemented |
+| **Cargo** (Rust) | Cargo.toml | `cargo fetch` | ✅ Implemented |
+| **Maven** (Java) | pom.xml | `mvn -q -DskipTests dependency:resolve` | ✅ Implemented |
+| **Gradle** (Java) | build.gradle / build.gradle.kts | `gradle dependencies` | ✅ Implemented |
+| **Docker** | Dockerfile | `docker build` / `docker run` | ✅ Optional |
+
+### Workflow Enhancements
+- ✅ **Python Virtualenv Isolation**: Optional .venv creation for pip installs
+- ✅ **Monorepo Discovery**: Detects subprojects and iterates installations
+- ✅ **Post-Setup Scripts/Recipes**: Runs post_setup scripts or JSON recipes
+- ✅ **Git Auth Helpers**: SSH key, OAuth token, and credential helper support
+- ✅ **CI Template Generation**: Optional workflow template creation
 
 ### File Operations
 - ✅ **Fast Copying**: Uses optimized shutil.copytree
@@ -210,6 +223,9 @@ Results: 5 passed, 0 failed
 ### Current Settings
 - Default target directory: `~/repo_setups`
 - Auto-install dependencies: Enabled by default
+- Optional Python virtualenv creation: Toggle in setup options
+- Git authentication options: SSH key, OAuth token, credential helper
+- Monorepo project discovery: Enabled automatically
 - Window size: 800x600 (resizable)
 - Log retention: Manual cleanup
 - Theme: Best available (clam/alt)
@@ -279,8 +295,6 @@ Results: 5 passed, 0 failed
 - [ ] Batch queue processing
 - [ ] Configuration file support
 - [ ] Repository templates
-- [ ] More dependency managers (Maven, Gradle, Cargo)
-- [ ] Custom post-setup scripts
 - [ ] History of recent setups
 - [ ] Favorites/bookmarks system
 - [ ] Multi-language support

@@ -95,8 +95,34 @@
 - **Checkbox**: "Automatically install dependencies"
   - Default: Checked (enabled)
   - Controls whether to auto-install from requirements.txt, package.json, etc.
+- **Checkbox**: "Create Python .venv for isolated installs"
+  - Optional virtual environment creation for Python tooling
+- **Checkbox**: "Run post-setup script/recipe if present"
+  - Executes post_setup.sh, post_setup.py, or recipe.json when available
+- **Checkbox**: "Run quick post-setup checks"
+  - Executes lightweight checks like git status
+- **Checkbox**: "Add CI workflow template (if missing)"
+  - Creates a minimal GitHub Actions workflow template
+- **Checkbox**: "Build Docker image when Dockerfile is detected"
+  - Uses docker build for detected Dockerfile contexts
+- **Checkbox**: "Run Docker image after build"
+  - Runs docker container after building the image
 
-### 6. Progress Section
+### 6. Git Authentication Section
+**Purpose**: Configure access for private repositories
+
+**Components**:
+- **SSH Key Entry**:
+  - Optional file path to a private key
+  - Includes "Browse..." button
+- **OAuth Token Entry**:
+  - Optional masked token input
+  - Used for HTTPS cloning
+- **Credential Helper Entry**:
+  - Optional Git credential helper string
+  - Passed via git -c credential.helper
+
+### 7. Progress Section
 **Purpose**: Real-time feedback during setup
 
 **Components**:
@@ -112,7 +138,7 @@
   - Auto-scrolls to newest messages
   - Height: Expands with window
 
-### 7. Action Buttons
+### 8. Action Buttons
 **Purpose**: Control the wizard
 
 **Components**:

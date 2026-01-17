@@ -92,6 +92,26 @@ def test_dependency_detection():
         # Test Go
         (test_dir / "go.mod").write_text("module test\n")
         assert (test_dir / "go.mod").exists()
+
+        # Test Pipenv
+        (test_dir / "Pipfile").write_text("[packages]\nrequests = \"*\"\n")
+        assert (test_dir / "Pipfile").exists()
+
+        # Test Poetry
+        (test_dir / "pyproject.toml").write_text("[tool.poetry]\nname = \"test\"\n")
+        assert (test_dir / "pyproject.toml").exists()
+
+        # Test Cargo
+        (test_dir / "Cargo.toml").write_text("[package]\nname = \"test\"\n")
+        assert (test_dir / "Cargo.toml").exists()
+
+        # Test Maven
+        (test_dir / "pom.xml").write_text("<project></project>")
+        assert (test_dir / "pom.xml").exists()
+
+        # Test Gradle
+        (test_dir / "build.gradle").write_text("plugins {}")
+        assert (test_dir / "build.gradle").exists()
         
         print("✓ Dependency detection passed")
         return True

@@ -14,8 +14,12 @@ import zipfile
 import tempfile
 import threading
 import logging
+import json
+import shlex
+import re
+import urllib.parse
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 from datetime import datetime
 
 
@@ -33,6 +37,15 @@ class SetupWizard:
         self.source_path = tk.StringVar()
         self.target_path = tk.StringVar(value=str(Path.home() / "repo_setups"))
         self.auto_install = tk.BooleanVar(value=True)
+        self.use_venv = tk.BooleanVar(value=False)
+        self.run_post_setup = tk.BooleanVar(value=False)
+        self.add_ci_templates = tk.BooleanVar(value=False)
+        self.enable_docker_build = tk.BooleanVar(value=False)
+        self.enable_docker_run = tk.BooleanVar(value=False)
+        self.run_post_setup_checks = tk.BooleanVar(value=False)
+        self.ssh_key_path = tk.StringVar()
+        self.oauth_token = tk.StringVar()
+        self.git_credential_helper = tk.StringVar()
         self.is_processing = False
         
         # Setup logging
@@ -150,12 +163,71 @@ class SetupWizard:
             variable=self.auto_install
         ).grid(row=0, column=0, sticky=tk.W, pady=5)
         
+        ttk.Checkbutton(
+            options_frame,
+            text="Create Python .venv for isolated installs",
+            variable=self.use_venv
+        ).grid(row=1, column=0, sticky=tk.W, pady=5)
+        
+        ttk.Checkbutton(
+            options_frame,
+            text="Run post-setup script/recipe if present",
+            variable=self.run_post_setup
+        ).grid(row=2, column=0, sticky=tk.W, pady=5)
+        
+        ttk.Checkbutton(
+            options_frame,
+            text="Run quick post-setup checks",
+            variable=self.run_post_setup_checks
+        ).grid(row=3, column=0, sticky=tk.W, pady=5)
+        
+        ttk.Checkbutton(
+            options_frame,
+            text="Add CI workflow template (if missing)",
+            variable=self.add_ci_templates
+        ).grid(row=4, column=0, sticky=tk.W, pady=5)
+        
+        ttk.Checkbutton(
+            options_frame,
+            text="Build Docker image when Dockerfile is detected",
+            variable=self.enable_docker_build
+        ).grid(row=5, column=0, sticky=tk.W, pady=5)
+        
+        ttk.Checkbutton(
+            options_frame,
+            text="Run Docker image after build",
+            variable=self.enable_docker_run
+        ).grid(row=6, column=0, sticky=tk.W, pady=5)
+        
+        # Git authentication section
+        auth_frame = ttk.LabelFrame(main_frame, text="4. Git Authentication (Optional)", padding="10")
+        auth_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        auth_frame.columnconfigure(1, weight=1)
+        
+        ttk.Label(auth_frame, text="SSH Key:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        ttk.Entry(auth_frame, textvariable=self.ssh_key_path).grid(
+            row=0, column=1, sticky=(tk.W, tk.E), pady=5, padx=(5, 5)
+        )
+        ttk.Button(auth_frame, text="Browse...", command=self.browse_ssh_key).grid(
+            row=0, column=2, pady=5
+        )
+        
+        ttk.Label(auth_frame, text="OAuth Token:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Entry(auth_frame, textvariable=self.oauth_token, show="*").grid(
+            row=1, column=1, sticky=(tk.W, tk.E), pady=5, padx=(5, 5)
+        )
+        
+        ttk.Label(auth_frame, text="Credential Helper:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Entry(auth_frame, textvariable=self.git_credential_helper).grid(
+            row=2, column=1, sticky=(tk.W, tk.E), pady=5, padx=(5, 5)
+        )
+        
         # Progress section
         progress_frame = ttk.LabelFrame(main_frame, text="Progress", padding="10")
-        progress_frame.grid(row=4, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
+        progress_frame.grid(row=5, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
         progress_frame.columnconfigure(0, weight=1)
         progress_frame.rowconfigure(1, weight=1)
-        main_frame.rowconfigure(4, weight=1)
+        main_frame.rowconfigure(5, weight=1)
         
         self.progress_bar = ttk.Progressbar(progress_frame, mode='indeterminate')
         self.progress_bar.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 5))
@@ -171,7 +243,7 @@ class SetupWizard:
         
         # Action buttons
         button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=5, column=0, pady=(10, 0))
+        button_frame.grid(row=6, column=0, pady=(10, 0))
         
         self.start_button = ttk.Button(
             button_frame,
@@ -225,6 +297,15 @@ class SetupWizard:
         path = filedialog.askdirectory(title="Select Target Directory")
         if path:
             self.target_path.set(path)
+
+    def browse_ssh_key(self):
+        """Open file browser for SSH key selection."""
+        path = filedialog.askopenfilename(
+            title="Select SSH Private Key",
+            filetypes=[("Private key", "*"), ("All files", "*.*")]
+        )
+        if path:
+            self.ssh_key_path.set(path)
             
     def log_message(self, message, level="INFO"):
         """Add message to the log display."""
@@ -271,6 +352,10 @@ class SetupWizard:
         elif source_type == "url":
             if not source.startswith(("http://", "https://", "git@")):
                 raise ValueError("Invalid Git URL format")
+
+        ssh_key = self.ssh_key_path.get().strip()
+        if ssh_key and not os.path.isfile(ssh_key):
+            raise ValueError(f"SSH key file does not exist: {ssh_key}")
                 
         return True
         
@@ -324,6 +409,18 @@ class SetupWizard:
             # Auto-install dependencies if enabled
             if self.auto_install.get():
                 self.install_dependencies(repo_path)
+
+            if self.add_ci_templates.get():
+                self.add_ci_template(repo_path)
+
+            if self.run_post_setup.get():
+                self.run_post_setup_steps(repo_path)
+
+            if self.run_post_setup_checks.get():
+                self.run_quick_checks(repo_path)
+
+            if self.enable_docker_build.get() or self.enable_docker_run.get():
+                self.handle_docker(repo_path)
                 
             success_message = "Setup completed successfully!"
             self.log_message(success_message, "SUCCESS")
@@ -333,7 +430,7 @@ class SetupWizard:
             ))
             
         except Exception as e:
-            error_msg = f"Setup failed: {str(e)}"
+            error_msg = self.format_error_message(e)
             self.log_message(error_msg, "ERROR")
             self.logger.exception("Setup failed")
             self.root.after(0, lambda: messagebox.showerror("Error", error_msg))
@@ -396,7 +493,8 @@ class SetupWizard:
         
     def setup_from_url(self, url, target_dir):
         """Setup repository from a Git URL."""
-        self.log_message(f"Cloning from URL: {url}")
+        oauth_token = self.oauth_token.get().strip()
+        self.log_message(f"Cloning from URL: {self.sanitize_url(url, oauth_token)}")
         
         # Check if git is available
         if not self.check_command("git"):
@@ -405,6 +503,9 @@ class SetupWizard:
         # Extract repository name from URL
         parsed = urlparse(url)
         repo_name = Path(parsed.path).stem.replace('.git', '')
+        
+        if not repo_name and ":" in url:
+            repo_name = Path(url.split(":")[-1]).stem.replace('.git', '')
         
         if not repo_name:
             repo_name = "repository"
@@ -419,22 +520,43 @@ class SetupWizard:
             dest_path = target_dir / f"{repo_name}_{counter}"
             
         # Clone repository
+        env = os.environ.copy()
+        ssh_key = self.ssh_key_path.get().strip()
+        if ssh_key:
+            env["GIT_SSH_COMMAND"] = f"ssh -i {ssh_key} -o IdentitiesOnly=yes"
+            
+        clone_url = url
+        if oauth_token:
+            if url.startswith("https://"):
+                clone_url = self.inject_oauth_token(url, oauth_token)
+            elif url.startswith("http://"):
+                self.log_message("OAuth token ignored for HTTP URLs. Use HTTPS instead.", "WARNING")
+            else:
+                self.log_message("OAuth token provided for non-HTTP URL; ignoring token", "WARNING")
+        
+        git_cmd = ["git"]
+        credential_helper = self.git_credential_helper.get().strip()
+        if credential_helper:
+            git_cmd.extend(["-c", f"credential.helper={credential_helper}"])
+        
         try:
             result = subprocess.run(
-                ["git", "clone", url, str(dest_path)],
+                git_cmd + ["clone", clone_url, str(dest_path)],
                 capture_output=True,
                 text=True,
                 timeout=300,
-                check=True
+                check=True,
+                env=env
             )
             self.log_message("Clone completed successfully")
             if result.stdout:
-                self.log_message(result.stdout.strip())
+                self.log_message(self.sanitize_text(result.stdout.strip()))
                 
         except subprocess.TimeoutExpired:
             raise RuntimeError("Git clone timed out (5 minutes)")
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Git clone failed: {e.stderr}")
+            error_output = self.sanitize_text(e.stderr or "")
+            raise RuntimeError(f"Git clone failed: {error_output or 'Git clone failed without error output'}")
             
         return dest_path
         
@@ -444,58 +566,470 @@ class SetupWizard:
         
         repo_path = Path(repo_path)
         installed_any = False
+        project_paths = self.detect_project_paths(repo_path)
+        if len(project_paths) > 1:
+            self.log_message(f"Detected monorepo with {len(project_paths)} projects")
         
-        # Python dependencies (requirements.txt, setup.py, pyproject.toml)
-        if (repo_path / "requirements.txt").exists():
+        for project_path in project_paths:
+            if project_path != repo_path:
+                self.log_message(f"Installing dependencies in {project_path}")
+            if self.install_dependencies_for_project(project_path):
+                installed_any = True
+                
+        if not installed_any:
+            self.log_message("No dependency files found or no package managers available")
+
+    def detect_project_paths(self, repo_path):
+        """Detect project roots for monorepos."""
+        dependency_files = {
+            "requirements.txt",
+            "setup.py",
+            "pyproject.toml",
+            "Pipfile",
+            "package.json",
+            "Gemfile",
+            "go.mod",
+            "pom.xml",
+            "build.gradle",
+            "build.gradle.kts",
+            "Cargo.toml",
+        }
+        skip_dirs = {
+            ".git",
+            ".hg",
+            ".svn",
+            "node_modules",
+            ".venv",
+            "venv",
+            "__pycache__",
+            "dist",
+            "build",
+            ".tox",
+        }
+        project_paths = set()
+        repo_path = Path(repo_path)
+        max_depth = 4
+        
+        for root, dirs, files in os.walk(repo_path):
+            rel = Path(root).relative_to(repo_path)
+            if len(rel.parts) > max_depth:
+                dirs[:] = []
+                continue
+            dirs[:] = [d for d in dirs if d not in skip_dirs]
+            if any(name in files for name in dependency_files):
+                project_paths.add(Path(root))
+                
+        if not project_paths:
+            project_paths.add(repo_path)
+            
+        return sorted(project_paths)
+        
+    def install_dependencies_for_project(self, project_path):
+        """Install dependencies for a single project path."""
+        installed_any = False
+        project_path = Path(project_path)
+        python_env = self.build_python_tool_env()
+        
+        requirements_file = project_path / "requirements.txt"
+        pipfile = project_path / "Pipfile"
+        pyproject = project_path / "pyproject.toml"
+        setup_py = project_path / "setup.py"
+        
+        if pipfile.exists():
+            self.log_message("Found Pipfile")
+            if self.check_command("pipenv"):
+                try:
+                    self.run_command(["pipenv", "install"], cwd=project_path, env=python_env)
+                    installed_any = True
+                except Exception as e:
+                    self.log_message(f"Failed to install Pipenv dependencies: {e}", "WARNING")
+            else:
+                self.log_message("pipenv is not available. Install with `pip install pipenv`.", "WARNING")
+        
+        if pyproject.exists() and self.is_poetry_project(pyproject):
+            self.log_message("Found Poetry pyproject.toml")
+            if self.check_command("poetry"):
+                try:
+                    self.run_command(["poetry", "install"], cwd=project_path, env=python_env)
+                    installed_any = True
+                except Exception as e:
+                    self.log_message(f"Failed to install Poetry dependencies: {e}", "WARNING")
+            else:
+                self.log_message("poetry is not available. Install with `pip install poetry`.", "WARNING")
+        
+        if requirements_file.exists():
             self.log_message("Found requirements.txt")
-            if self.check_command("pip"):
+            pip_cmd = self.resolve_pip_command(project_path)
+            if pip_cmd:
                 try:
                     self.run_command(
-                        ["pip", "install", "-r", "requirements.txt"],
-                        cwd=repo_path
+                        pip_cmd + ["install", "-r", "requirements.txt"],
+                        cwd=project_path
                     )
                     installed_any = True
                 except Exception as e:
                     self.log_message(f"Failed to install Python dependencies: {e}", "WARNING")
+            else:
+                self.log_message("pip is not available. Install Python/pip to continue.", "WARNING")
+                
+        elif setup_py.exists() or (pyproject.exists() and not self.is_poetry_project(pyproject)):
+            self.log_message("Found Python project metadata")
+            pip_cmd = self.resolve_pip_command(project_path)
+            if pip_cmd:
+                try:
+                    self.run_command(pip_cmd + ["install", "."], cwd=project_path)
+                    installed_any = True
+                except Exception as e:
+                    self.log_message(f"Failed to install Python package: {e}", "WARNING")
+            else:
+                self.log_message("pip is not available. Install Python/pip to continue.", "WARNING")
                     
-        # Node.js dependencies (package.json)
-        if (repo_path / "package.json").exists():
+        if (project_path / "package.json").exists():
             self.log_message("Found package.json")
             if self.check_command("npm"):
                 try:
-                    self.run_command(["npm", "install"], cwd=repo_path)
+                    self.run_command(["npm", "install"], cwd=project_path)
                     installed_any = True
                 except Exception as e:
                     self.log_message(f"Failed to install Node.js dependencies: {e}", "WARNING")
+            else:
+                self.log_message("npm is not available. Install Node.js to continue.", "WARNING")
                     
-        # Ruby dependencies (Gemfile)
-        if (repo_path / "Gemfile").exists():
+        if (project_path / "Gemfile").exists():
             self.log_message("Found Gemfile")
             if self.check_command("bundle"):
                 try:
-                    self.run_command(["bundle", "install"], cwd=repo_path)
+                    self.run_command(["bundle", "install"], cwd=project_path)
                     installed_any = True
                 except Exception as e:
                     self.log_message(f"Failed to install Ruby dependencies: {e}", "WARNING")
+            else:
+                self.log_message("bundle is not available. Install Ruby bundler to continue.", "WARNING")
                     
-        # Go dependencies (go.mod)
-        if (repo_path / "go.mod").exists():
+        if (project_path / "go.mod").exists():
             self.log_message("Found go.mod")
             if self.check_command("go"):
                 try:
-                    self.run_command(["go", "mod", "download"], cwd=repo_path)
+                    self.run_command(["go", "mod", "download"], cwd=project_path)
                     installed_any = True
                 except Exception as e:
                     self.log_message(f"Failed to install Go dependencies: {e}", "WARNING")
+            else:
+                self.log_message("go is not available. Install Go to continue.", "WARNING")
                     
-        if not installed_any:
-            self.log_message("No dependency files found or no package managers available")
+        if (project_path / "Cargo.toml").exists():
+            self.log_message("Found Cargo.toml")
+            if self.check_command("cargo"):
+                try:
+                    self.run_command(["cargo", "fetch"], cwd=project_path)
+                    installed_any = True
+                except Exception as e:
+                    self.log_message(f"Failed to fetch Cargo dependencies: {e}", "WARNING")
+            else:
+                self.log_message("cargo is not available. Install Rust to continue.", "WARNING")
+                    
+        if (project_path / "pom.xml").exists():
+            self.log_message("Found pom.xml")
+            if self.check_command("mvn"):
+                try:
+                    self.run_command(["mvn", "-q", "-DskipTests", "dependency:resolve"], cwd=project_path)
+                    installed_any = True
+                except Exception as e:
+                    self.log_message(f"Failed to resolve Maven dependencies: {e}", "WARNING")
+            else:
+                self.log_message("mvn is not available. Install Maven to continue.", "WARNING")
+                    
+        if (project_path / "build.gradle").exists() or (project_path / "build.gradle.kts").exists():
+            self.log_message("Found Gradle build file")
+            gradle_cmd = self.get_gradle_command(project_path)
+            if gradle_cmd:
+                try:
+                    self.run_command(gradle_cmd, cwd=project_path)
+                    installed_any = True
+                except Exception as e:
+                    self.log_message(f"Failed to resolve Gradle dependencies: {e}", "WARNING")
+            else:
+                self.log_message("Gradle is not available. Install Gradle to continue.", "WARNING")
+                
+        return installed_any
+        
+    def build_python_tool_env(self):
+        """Build environment variables for Python tooling."""
+        env = os.environ.copy()
+        if self.use_venv.get():
+            env["PIPENV_VENV_IN_PROJECT"] = "1"
+            env["POETRY_VIRTUALENVS_IN_PROJECT"] = "1"
+        return env
+        
+    def is_poetry_project(self, pyproject_path):
+        """Determine if pyproject.toml belongs to Poetry."""
+        try:
+            content = Path(pyproject_path).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as e:
+            self.log_message(f"Unable to read {pyproject_path}: {e}", "WARNING")
+            return False
+        return "[tool.poetry]" in content
+        
+    def resolve_pip_command(self, project_path):
+        """Resolve the pip command, optionally using a venv."""
+        if not self.check_command("pip") and not self.use_venv.get():
+            return None
+        
+        if not self.use_venv.get():
+            return ["pip"]
+        
+        try:
+            venv_path = self.ensure_venv(project_path)
+        except Exception as e:
+            self.log_message(
+                f"Failed to create virtual environment: {e}. Ensure the Python venv module is installed.",
+                "WARNING"
+            )
+            return ["pip"] if self.check_command("pip") else None
+        
+        pip_path = self.get_venv_pip(venv_path)
+        if pip_path.exists():
+            return [str(pip_path)]
+        
+        return ["pip"] if self.check_command("pip") else None
+        
+    def ensure_venv(self, project_path):
+        """Create a virtual environment if needed."""
+        venv_path = Path(project_path) / ".venv"
+        if not venv_path.exists():
+            self.log_message(f"Creating virtual environment in {venv_path}")
+            self.run_command([sys.executable, "-m", "venv", str(venv_path)], cwd=project_path)
+        return venv_path
+        
+    def get_venv_pip(self, venv_path):
+        """Get the pip path inside a virtual environment."""
+        if os.name == "nt":
+            return Path(venv_path) / "Scripts" / "pip.exe"
+        return Path(venv_path) / "bin" / "pip"
+        
+    def get_gradle_command(self, project_path):
+        """Return the Gradle command to run for dependency resolution."""
+        gradlew = Path(project_path) / "gradlew"
+        if gradlew.exists():
+            return [str(gradlew), "--no-daemon", "dependencies"]
+        gradlew_bat = Path(project_path) / "gradlew.bat"
+        if gradlew_bat.exists():
+            return [str(gradlew_bat), "--no-daemon", "dependencies"]
+        if self.check_command("gradle"):
+            return ["gradle", "--no-daemon", "dependencies"]
+        return None
+
+    def add_ci_template(self, repo_path):
+        """Add a minimal CI workflow template if none exists."""
+        try:
+            repo_path = Path(repo_path)
+            workflow_dir = repo_path / ".github" / "workflows"
+            workflow_dir.mkdir(parents=True, exist_ok=True)
+            workflow_file = workflow_dir / "repo-setup-checks.yml"
+            
+            if workflow_file.exists():
+                self.log_message("CI workflow template already exists")
+                return
+            
+            template = """name: Repo Setup Checks
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  setup-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Repo summary
+        run: |
+          echo "Repository setup checks"
+          ls -la
+      - name: Python check
+        if: hashFiles('requirements.txt', 'pyproject.toml', 'setup.py', 'Pipfile') != ''
+        run: python3 --version
+      - name: Node check
+        if: hashFiles('package.json') != ''
+        run: node --version
+      - name: Go check
+        if: hashFiles('go.mod') != ''
+        run: go version
+      - name: Rust check
+        if: hashFiles('Cargo.toml') != ''
+        run: cargo --version
+      - name: Java check
+        if: hashFiles('pom.xml', 'build.gradle', 'build.gradle.kts') != ''
+        run: java -version
+"""
+            workflow_file.write_text(template, encoding="utf-8")
+            self.log_message(f"Added CI workflow template: {workflow_file}")
+        except Exception as e:
+            self.log_message(f"Failed to add CI workflow template: {e}", "WARNING")
+        
+    def run_post_setup_steps(self, repo_path):
+        """Run post-setup scripts or recipes if present."""
+        repo_path = Path(repo_path)
+        self.log_message("Checking for post-setup scripts or recipes...")
+        scripts = [
+            repo_path / ".repo_setup_wizard" / "post_setup.sh",
+            repo_path / ".repo_setup_wizard" / "post_setup.py",
+            repo_path / "post_setup.sh",
+            repo_path / "post_setup.py",
+        ]
+        recipes = [
+            repo_path / ".repo_setup_wizard.json",
+            repo_path / ".repo_setup_wizard" / "recipe.json",
+        ]
+        ran_any = False
+        
+        for script in scripts:
+            if script.exists():
+                try:
+                    ran_any = True
+                    if script.suffix == ".sh":
+                        if self.check_command("bash"):
+                            self.run_command(["bash", str(script)], cwd=repo_path)
+                        else:
+                            self.log_message("bash is not available to run post_setup.sh", "WARNING")
+                    elif script.suffix == ".py":
+                        self.run_command([sys.executable, str(script)], cwd=repo_path)
+                except Exception as e:
+                    self.log_message(f"Post-setup script failed: {e}", "WARNING")
+        
+        for recipe in recipes:
+            if recipe.exists():
+                try:
+                    ran_any = True
+                    recipe_data = json.loads(recipe.read_text(encoding="utf-8"))
+                    commands = recipe_data.get("commands", [])
+                    working_dir = recipe_data.get("working_dir", ".")
+                    recipe_cwd = repo_path / working_dir
+                    for command in commands:
+                        cmd_list = None
+                        if isinstance(command, str):
+                            cmd_list = shlex.split(command)
+                        elif isinstance(command, list):
+                            cmd_list = [str(part) for part in command]
+                        if cmd_list:
+                            self.run_command(cmd_list, cwd=recipe_cwd)
+                except Exception as e:
+                    self.log_message(f"Post-setup recipe failed: {e}", "WARNING")
+        
+        if not ran_any:
+            self.log_message("No post-setup scripts or recipes found")
+            
+    def run_quick_checks(self, repo_path):
+        """Run lightweight post-setup checks."""
+        repo_path = Path(repo_path)
+        self.log_message("Running quick post-setup checks...")
+        if (repo_path / ".git").exists() and self.check_command("git"):
+            try:
+                self.run_command(["git", "status", "-sb"], cwd=repo_path)
+            except Exception as e:
+                self.log_message(f"Git status check failed: {e}", "WARNING")
+        self.log_message("Post-setup checks completed")
+        
+    def handle_docker(self, repo_path):
+        """Build and optionally run Docker images when Dockerfiles are detected."""
+        repo_path = Path(repo_path)
+        docker_contexts = self.find_docker_contexts(repo_path)
+        if not docker_contexts:
+            self.log_message("No Dockerfiles detected")
+            return
+        
+        if not self.check_command("docker"):
+            self.log_message("docker is not available. Install Docker to continue.", "WARNING")
+            return
+        
+        for context in docker_contexts:
+            tag_base = f"{repo_path.name}-{context.name}" if context != repo_path else repo_path.name
+            # Docker tags allow alphanumerics plus ., _, and - characters.
+            tag = re.sub(r"[^0-9A-Za-z_.-]", "-", tag_base).lower()
+            try:
+                if self.enable_docker_build.get() or self.enable_docker_run.get():
+                    self.log_message(f"Building Docker image for {context}")
+                    self.run_command(["docker", "build", "-t", tag, str(context)], cwd=repo_path)
+                if self.enable_docker_run.get():
+                    self.log_message(f"Running Docker image {tag}")
+                    self.run_command(["docker", "run", "--rm", tag], cwd=repo_path)
+            except Exception as e:
+                self.log_message(f"Docker operation failed: {e}", "WARNING")
+        
+    def find_docker_contexts(self, repo_path):
+        """Find Dockerfile contexts within the repository."""
+        docker_contexts = []
+        skip_dirs = {".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build"}
+        repo_path = Path(repo_path)
+        max_depth = 4
+        
+        for root, dirs, files in os.walk(repo_path):
+            rel = Path(root).relative_to(repo_path)
+            if len(rel.parts) > max_depth:
+                dirs[:] = []
+                continue
+            dirs[:] = [d for d in dirs if d not in skip_dirs]
+            if "Dockerfile" in files:
+                docker_contexts.append(Path(root))
+                
+        return docker_contexts
+        
+    def sanitize_url(self, url, oauth_token):
+        """Sanitize URLs to avoid leaking tokens."""
+        sanitized = url
+        if oauth_token:
+            sanitized = sanitized.replace(oauth_token, "***")
+        parsed = urlparse(sanitized)
+        if parsed.username:
+            hostname = parsed.hostname or ""
+            if parsed.port:
+                hostname = f"{hostname}:{parsed.port}"
+            sanitized = urlunparse((parsed.scheme, hostname, parsed.path, parsed.params, parsed.query, parsed.fragment))
+        return sanitized
+        
+    def inject_oauth_token(self, url, oauth_token):
+        """Insert OAuth token into HTTPS URL."""
+        parsed = urlparse(url)
+        if parsed.username:
+            return url
+        encoded = urllib.parse.quote(oauth_token, safe="")
+        netloc = f"{encoded}@{parsed.netloc}"
+        return urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment))
+        
+    def sanitize_text(self, text):
+        """Sanitize output for secrets."""
+        token = self.oauth_token.get().strip()
+        if token:
+            return text.replace(token, "***")
+        return text
+        
+    def format_error_message(self, error):
+        """Format errors with guided remediation steps."""
+        raw_message = self.sanitize_text(str(error))
+        message = f"Setup failed: {raw_message}"
+        hints = []
+        lower_msg = raw_message.lower()
+        
+        if "git is not installed" in lower_msg:
+            hints.append("Install Git from https://git-scm.com/downloads")
+        if "authentication" in lower_msg or "permission denied" in lower_msg or "could not read" in lower_msg:
+            hints.append("Provide an OAuth token or SSH key in the Git Authentication section")
+        if "pip" in lower_msg and "not available" in lower_msg:
+            hints.append("Install Python and pip, then re-run setup")
+        if "docker" in lower_msg and "not available" in lower_msg:
+            hints.append("Install Docker Desktop or the Docker Engine")
+        if "timeout" in lower_msg:
+            hints.append("Check network connectivity and try again")
+            
+        if hints:
+            message += "\n\nGuided remediation:\n" + "\n".join(f"- {hint}" for hint in hints)
+            
+        return message
             
     def check_command(self, command):
         """Check if a command is available in PATH."""
         return shutil.which(command) is not None
         
-    def run_command(self, cmd, cwd=None):
+    def run_command(self, cmd, cwd=None, env=None):
         """Run a command and log output."""
         self.log_message(f"Running: {' '.join(cmd)}")
         
@@ -504,17 +1038,18 @@ class SetupWizard:
             cwd=cwd,
             capture_output=True,
             text=True,
-            timeout=600
+            timeout=600,
+            env=env
         )
         
         if result.stdout:
             for line in result.stdout.strip().split('\n'):
                 if line.strip():
-                    self.log_message(line.strip())
+                    self.log_message(self.sanitize_text(line.strip()))
                     
         if result.returncode != 0:
             error_msg = result.stderr.strip() if result.stderr else f"Command failed with exit code {result.returncode}"
-            raise RuntimeError(error_msg)
+            raise RuntimeError(self.sanitize_text(error_msg))
             
     def count_files(self, path):
         """Count files in a directory recursively."""
